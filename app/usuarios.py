@@ -20,4 +20,29 @@ def obtener_usuario(usuario_id: int):
         if u["id"] == usuario_id:
             return u
     return {"error": "Usuario no encontrado"}    
+
+@router.get("/usuarios/mayores/{edad_minima}")
+def usuarios_mayores(edad_minima: int):
+    resultado = []
+    for u in usuarios:
+        if u["edad"] >= edad_minima:
+            resultado.append(u)
+    return resultado
     
+from pydantic import BaseModel
+
+class UsuarioCreate(BaseModel):
+    nombre: str
+    edad: int
+
+
+@router.post("/usuarios")
+def crear_usuario(usuario: UsuarioCreate):
+    nuevo_usuario = {
+        "id": len(usuarios) + 1,
+        "nombre": usuario.nombre,
+        "edad": usuario.edad
+    }
+    usuarios.append(nuevo_usuario)
+    return nuevo_usuario
+
