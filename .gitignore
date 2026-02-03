@@ -1,0 +1,16 @@
+```gitignore
+# Entorno virtual
+venv/
+
+# Cache de Python
+__pycache__/
+*.pyc
+
+# Base de datos local
+app.db
+
+# Variables de entorno
+.env
+
+# VS Code
+.vscode/
