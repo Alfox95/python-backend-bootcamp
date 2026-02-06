@@ -1,0 +1,57 @@
+# Python Backend Bootcamp
+
+Proyecto de backend desarrollado con **FastAPI**, como parte de un proceso de aprendizaje orientado a trabajo remoto como Backend Developer.
+
+## 🚀 Tecnologías utilizadas
+- Python 3
+- FastAPI
+- SQLAlchemy
+- SQLite
+- Uvicorn
+
+## 📌 Funcionalidades
+- Crear usuarios
+- Listar usuarios
+- Obtener usuario por ID
+- Actualizar usuarios
+- Eliminar usuarios
+- Validaciones y manejo de errores HTTP
+
+## 📂 Estructura del proyecto
+
+app/
+├── main.py
+├── usuarios.py
+├── models.py
+├── database.py
+├── init_db.py
+└── app.db
+
+## ▶️ Cómo ejecutar el proyecto
+
+1. Crear entorno virtual:
+```bash
+python -m venv venv
+
+2. Activar entorno virtual:
+
+# Windows
+.\venv\Scripts\activate
+
+3. Instalar dependencias:
+
+pip install fastapi uvicorn sqlalchemy
+
+4. Inicializar base de datos:
+
+python -m app.init_db
+
+
+5. Ejecutar servidor:
+
+uvicorn app.main:app --reload
+
+
+6. Abrir documentación:
+
+http://127.0.0.1:8000/docs
