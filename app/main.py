@@ -1,8 +1,12 @@
 from fastapi import FastAPI
 from app.usuarios import router as usuarios_router
 from app.auth import router as auth_router
+from app.database import Base, engine
+from app.models import Usuario  
 
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
 
 # Endpoints del mòdulo usuarios
 app.include_router(usuarios_router)
