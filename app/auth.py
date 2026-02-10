@@ -9,11 +9,7 @@ from jose import jwt, JWTError
 from app.database import get_db
 from app.models import Usuario
 from app.security import verify_password
-
-# Configuración del JWT
-SECRET_KEY = "esta_es_una_clave_muy_segura"     # cambiar en producción
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60    # duración del token
+from app.core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
@@ -35,13 +31,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise HTTPException(status_code=401, detail="Token invalido")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Token invalido")
+            raise credential_exception
+    except (JWTError, KeyError, TypeError):
+        raise credential_exception
     
     user = db.query(Usuario).filter(Usuario.nombre == username).first()
     if user is None:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+        raise credential_exception
     return user
 
 

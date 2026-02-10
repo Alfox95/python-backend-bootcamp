@@ -6,8 +6,7 @@ from app.database import  get_db
 from app.auth import get_current_user
 from app.models import Usuario
 
-from app.security import hash_password, verify_password
-from fastapi.security import OAuth2PasswordRequestForm
+from app.security import hash_password
 
 
 router = APIRouter()
@@ -25,10 +24,20 @@ class UsuarioCreate(BaseModel):
             raise ValueError("La contraseña debe tener al menos 6 caracteres")
         return value
 
+class UsuarioOut(BaseModel):
+    id: int
+    nombre: str
+    edad: int
+
 
 @router.post("/usuarios")
 def crear_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     
+    existing = db.query(Usuario).filter(Usuario.nombre == usuario.nombre).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
+
     if usuario.edad < 0:
         raise HTTPException(status_code=400, detail= "No se puede tener edad negativa"
         )
@@ -48,7 +57,11 @@ def crear_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     
 
 @router.get("/usuarios")
-def listar_usuarios(db: Session = Depends(get_db)):
+def listar_usuarios(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+
     return db.query(Usuario).all()
 
 class UsuarioUpdate(BaseModel):
@@ -75,7 +88,7 @@ def actualizar_usuario(
 
 @router.delete("/usuarios/{usuario_id}")
 def eliminar_usuario(
-    usuario_id = int,
+    usuario_id : int,
     db: Session = Depends(get_db)
 ):
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
@@ -95,7 +108,7 @@ def leer_mi_usuario(current_user: Usuario = Depends(get_current_user)):
         "edad": current_user.edad
     }
 
-@router.get("/usuarios/{usuario_id}")
+@router.get("/usuarios/{usuario_id}", response_model=UsuarioOut)
 def buscar_usuario(
     usuario_id: int,
     db: Session = Depends(get_db)
