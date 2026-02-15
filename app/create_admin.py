@@ -23,7 +23,7 @@ def create_admin():
     else:
         print("Admin ya existe")
 
-        db.close()
+    db.close()
 
 if __name__ == "__main__":
     create_admin()
