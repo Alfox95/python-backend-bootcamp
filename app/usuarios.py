@@ -5,16 +5,19 @@ from pydantic import BaseModel, field_validator
 from app.database import  get_db
 from app.auth import get_current_user
 from app.models import Usuario
-
 from app.security import hash_password
 
 
 router = APIRouter()
 
 class UsuarioCreate(BaseModel):
+    username: str
+    mail: str
+    password: str
     nombre: str
     edad: int
-    password: str
+    es_admin: bool = False
+
 
     @field_validator("password")
     def validar_password(cls, value):
@@ -26,14 +29,19 @@ class UsuarioCreate(BaseModel):
 
 class UsuarioOut(BaseModel):
     id: int
+    username: str
+    mail: str
+    password: str
     nombre: str
     edad: int
-
+    es_admin: bool
 
 @router.post("/usuarios")
 def crear_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     
-    existing = db.query(Usuario).filter(Usuario.nombre == usuario.nombre).first()
+    existing = db.query(Usuario).filter(
+        (Usuario.username == usuario.username) | (Usuario.mail == usuario.mail)
+        ).first()
     
     if existing:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
@@ -45,15 +53,24 @@ def crear_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     hashed = hash_password(usuario.password)
     
     nuevo = Usuario(
+        username=usuario.username,
+        mail=usuario.mail,
         nombre=usuario.nombre, 
         edad=usuario.edad,
-        password=hashed)
+        password=hashed,
+        es_admin=usuario.es_admin
+     )
 
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
 
-    return {"id": nuevo.id, "nombre": nuevo.nombre}
+    return {"id": nuevo.id, 
+            "nombre": nuevo.nombre,
+            "username": nuevo.username,
+            "mail": nuevo.mail,
+            "es_admin": nuevo.es_admin
+            }
     
 
 @router.get("/usuarios")
@@ -61,7 +78,8 @@ def listar_usuarios(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-
+    if not current_user.es_admin:
+        raise  HTTPException(status_code=403, detail="No tienes permisos de admin")
     return db.query(Usuario).all()
 
 class UsuarioUpdate(BaseModel):
@@ -72,10 +90,14 @@ class UsuarioUpdate(BaseModel):
 def actualizar_usuario(
     usuario_id: int,
     datos: UsuarioUpdate,
+    current_user: Usuario = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
 
+    if not current_user.es_admin:
+        raise  HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
     if not usuario:
         raise HTTPException(status_code=404, detail= "Usuario no encontrado")
     
@@ -93,9 +115,13 @@ def eliminar_usuario(
 ):
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
 
+    if not usuario.es_admin:
+        raise  HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
     if not usuario: 
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
+
     db.delete(usuario)
     db.commit()
     return {"mensaje": "Usuario eliminado"}
@@ -104,8 +130,11 @@ def eliminar_usuario(
 def leer_mi_usuario(current_user: Usuario = Depends(get_current_user)):
     return {
         "id": current_user.id,
+        "username": current_user.username,
+        "mail": current_user.mail,
         "nombre": current_user.nombre,
-        "edad": current_user.edad
+        "edad": current_user.edad,
+        "es_admin": current_user.es_admin
     }
 
 @router.get("/usuarios/{usuario_id}", response_model=UsuarioOut)
@@ -116,7 +145,16 @@ def buscar_usuario(
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
 
     if not usuario:
-        raise HTTPException(status_code=404, detail="El usuario con ese ID no existe")
-    
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
 
+@router.delete("/usuarios/{usuario_id}")
+def eliminar_cuenta(
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    usuario = db.query(Usuario).filter(Usuario.id == current_user.id).first()
+    
+    db.delete(usuario)
+    db.commit()
+    return {"mensaje": "Ha eliminado su cuenta"}

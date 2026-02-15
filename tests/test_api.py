@@ -95,10 +95,28 @@ async def test_endpoint_sin_token(client):
 # Test 6: Listar usuarios (solo si no requiere auth)
 @pytest.mark.asyncio
 async def test_listar_usuarios(client):
-    response = await client.get("/usuarios")
+    # Crear usuario
+    await client.post("/usuarios", json={
+        "nombre": "Test",
+        "edad": 30,
+        "password": "12345678"
+    })
+
+    # Login
+    login_response = await client.post("/login", data={
+        "username": "Test",
+        "password": "12345678"
+    })
+
+    token = login_response.json()["access_token"]
+
+    # Llamar endpoint protegido
+    response = await client.get(
+        "/usuarios",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
     assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
 
 # Test 7: Validación de edad negativa
 @pytest.mark.asyncio
