@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 
 from app.database import  get_db
-from app.auth import get_current_user
+from app.auth import get_current_user, requiere_admin
 from app.models import Usuario
 from app.security import hash_password
 
@@ -69,6 +69,7 @@ def crear_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
             "nombre": nuevo.nombre,
             "username": nuevo.username,
             "mail": nuevo.mail,
+            "edad": nuevo.edad,
             "es_admin": nuevo.es_admin
             }
     
@@ -86,18 +87,35 @@ class UsuarioUpdate(BaseModel):
     nombre: str
     edad: int
 
+@router.get("/usuarios/me")
+def leer_mi_usuario(current_user: Usuario = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "mail": current_user.mail,
+        "nombre": current_user.nombre,
+        "edad": current_user.edad,
+        "es_admin": current_user.es_admin
+    }
+
+@router.delete("/usuarios/me")
+def eliminar_cuenta(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):    
+    db.delete(current_user)
+    db.commit()
+    return {"mensaje": "Ha eliminado su cuenta"}
+
 @router.put("/usuarios/{usuario_id}")
 def actualizar_usuario(
     usuario_id: int,
     datos: UsuarioUpdate,
-    current_user: Usuario = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(requiere_admin)
 ):
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
 
-    if not current_user.es_admin:
-        raise  HTTPException(status_code=403, detail="No tienes permisos de admin")
-    
     if not usuario:
         raise HTTPException(status_code=404, detail= "Usuario no encontrado")
     
@@ -111,13 +129,11 @@ def actualizar_usuario(
 @router.delete("/usuarios/{usuario_id}")
 def eliminar_usuario(
     usuario_id : int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(requiere_admin)
 ):
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
 
-    if not usuario.es_admin:
-        raise  HTTPException(status_code=403, detail="No tienes permisos de admin")
-    
     if not usuario: 
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
@@ -126,16 +142,7 @@ def eliminar_usuario(
     db.commit()
     return {"mensaje": "Usuario eliminado"}
 
-@router.get("/usuarios/me")
-def leer_mi_usuario(current_user: Usuario = Depends(get_current_user)):
-    return {
-        "id": current_user.id,
-        "username": current_user.username,
-        "mail": current_user.mail,
-        "nombre": current_user.nombre,
-        "edad": current_user.edad,
-        "es_admin": current_user.es_admin
-    }
+
 
 @router.get("/usuarios/{usuario_id}", response_model=UsuarioOut)
 def buscar_usuario(
@@ -148,13 +155,3 @@ def buscar_usuario(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
 
-@router.delete("/usuarios/{usuario_id}")
-def eliminar_cuenta(
-    current_user: Usuario = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    usuario = db.query(Usuario).filter(Usuario.id == current_user.id).first()
-    
-    db.delete(usuario)
-    db.commit()
-    return {"mensaje": "Ha eliminado su cuenta"}

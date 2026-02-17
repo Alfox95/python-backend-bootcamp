@@ -37,8 +37,11 @@ async def test_root(client):
 async def test_crear_usuario(client):
     user_data = {
         "nombre": "UsuarioTest",
+        "username": "UsuarioTest",
         "edad": 30,
-        "password": "test123"
+        "password": "test123",
+        "mail": "test@test.compile",
+        "es_admin": True
     }
 
     response = await client.post("/usuarios", json=user_data)
@@ -97,15 +100,18 @@ async def test_endpoint_sin_token(client):
 async def test_listar_usuarios(client):
     # Crear usuario
     await client.post("/usuarios", json={
-        "nombre": "Test",
+        "nombre": "UsuarioTest",
+        "username": "UsuarioTest",
         "edad": 30,
-        "password": "12345678"
+        "password": "test123",
+        "mail": "test@test.compile",
+        "es_admin": True
     })
 
     # Login
     login_response = await client.post("/login", data={
-        "username": "Test",
-        "password": "12345678"
+        "username": "UsuarioTest",
+        "password": "test123"
     })
 
     token = login_response.json()["access_token"]
@@ -123,8 +129,11 @@ async def test_listar_usuarios(client):
 async def test_validacion_edad_negativa(client):
     user_data = {
         "nombre": "UsuarioInvalido",
-        "edad": -5,
-        "password": "test123"
+        "username": "UsuarioInvalido",
+        "edad": -30,
+        "password": "test123",
+        "mail": "edadinvalida@test.com",
+        "es_admin": False
     }
 
     response = await client.post("/usuarios", json=user_data)
@@ -136,8 +145,11 @@ async def test_validacion_edad_negativa(client):
 async def test_validacion_password_corta(client):
     user_data = {
         "nombre": "UsuarioPassCorta",
+        "username": "UsuarioPassCorta",
+        "mail": "passcorta@test.com",
         "edad": 25,
-        "password": "123"
+        "password": "123",
+        "es_admim": False
     }
 
     response = await client.post("/usuarios", json=user_data)
