@@ -228,6 +228,12 @@ async def test_user_lee_datos(client):
 
     response = await client.get("/usuarios/me", headers=auth_headers(token))
     assert response.status_code == 200
+    
+    data = response.json()
+    assert "id" in data
+    assert "nombre" in data
+    assert data["username"] == "Leo_datos"
+
 
 #Test 14: Usuario busca usuario
 @pytest.mark.asyncio
@@ -236,12 +242,15 @@ async def test_user_busca_user(client):
     token2 = await user_token(client,"Encontrado")
 
     user2 = await client.get("/usuarios/me", headers=auth_headers(token2))
-    user_id = user2.json()["id"]
+    user_data = user2.json()
 
     headers = {"Authorization": f"Bearer {token}"}   
 
-    response = await client.get(f"/usuarios/{user_id}", headers=headers)
+    response = await client.get(f"/usuarios/{user_data["id"]}", headers=headers)
     assert response.status_code == 200
+    assert "id" in user_data
+    assert "nombre" in user_data
+    assert user_data["username"] == "Encontrado"
 
 #Test 15: Admin puede eliminarse
 @pytest.mark.asyncio
@@ -265,6 +274,9 @@ async def test_admin_elimina(client):
 
     response = await client.delete(f"/usuarios/{user_id}", headers=headers)
     assert response.status_code == 200
+    response2 = await client.get(f"/usuarios/{user_id}", headers=headers)
+    assert response2.status_code == 404
+
 
 #Test 17: Admin edita
 @pytest.mark.asyncio
@@ -272,18 +284,29 @@ async def test_admin_edita(client):
 
     token = await admin_token(client, "Edita")
     token2 = await user_token(client, "No_edita")
-    me = await client.get("/usuarios/me", headers=auth_headers(token2))
-    user_id = me.json()["id"]
+    user = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_data = user.json()
+
+    assert user_data["edad"] == 25
+    assert user_data["es_admin"] == False
+    assert user_data["username"] == "No_edita"
+    assert user_data["nombre"] == "UserTest"
 
     response = await client.put(
-        f"/usuarios/{user_id}", 
+        f"/usuarios/{user_data["id"]}", 
         headers= auth_headers(token),
         json= {"nombre": "Editado",
                 "edad": 10,
                 "es_admin": True} 
         )
+    user_edit = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_data2= user_edit.json()
     
     assert response.status_code == 200
+    assert user_data2["edad"] == 10
+    assert user_data2["es_admin"] == True
+    assert user_data2["nombre"] == "Editado"
+
 
 #Test 18: Admin lee usuario
 @pytest.mark.asyncio
@@ -300,9 +323,43 @@ async def test_admin_busca_user(client):
     token2 = await user_token(client,"Encontrado")
 
     user2 = await client.get("/usuarios/me", headers=auth_headers(token2))
-    user_id = user2.json()["id"]
+    userdata = user2.json()
 
     headers = {"Authorization": f"Bearer {token}"}   
 
-    response = await client.get(f"/usuarios/{user_id}", headers=headers)
+    response = await client.get(f"/usuarios/{userdata["id"]}", headers=headers)
     assert response.status_code == 200
+    assert userdata["username"] == "Encontrado"
+    assert userdata["nombre"] == "UserTest"
+    assert userdata["edad"] == 25
+    assert userdata["es_admin"] == False
+    assert userdata["mail"] == "Encontrado@test.com"
+
+#Test 20: Username o password incorrecto
+@pytest.mark.asyncio
+async def test_user_password_incorrecto(client):
+    token = await user_token(client,"Username_incorrecto")
+
+    user1 = await client.get("/usuarios/me", headers=auth_headers(token))
+    username = user1.json()["username"]
+
+
+    response = await client.post("/login", data= {
+        "username": username + "ERROR", 
+        "password": "test123"
+        })
+    response2 = await client.post("/login", data= {
+        "username": username, 
+        "password": "test1234"
+        })
+    assert response.status_code == 401, f"Login falló: {response.text}"
+    assert response2.status_code == 401, f"Login falló: {response2.text}"
+
+#Test 21: No se puede crear usuario existente
+@pytest.mark.asyncio
+async def test_usuario_existente(client):
+
+    await user_token(client, "Ya existo")
+    response = await crear_usuario(client, "Ya existo")
+
+    assert response.status_code == 400, f"Error: {response.text}"
