@@ -86,6 +86,7 @@ def listar_usuarios(
 class UsuarioUpdate(BaseModel):
     nombre: str
     edad: int
+    es_admin: bool
 
 @router.get("/usuarios/me")
 def leer_mi_usuario(current_user: Usuario = Depends(get_current_user)):
@@ -121,6 +122,7 @@ def actualizar_usuario(
     
     usuario.nombre = datos.nombre
     usuario.edad = datos.edad
+    usuario.es_admin = datos.es_admin
 
     db.commit()
     db.refresh(usuario)

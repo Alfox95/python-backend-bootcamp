@@ -1,21 +1,18 @@
-﻿import sys
-import os
-
-# Agregar directorio padre al path para todos los tests
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+﻿import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
 from app.main import app
 from app.database import Base, get_db
 
+# Crear engine en memoria
 engine = create_engine(
     "sqlite://",
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+    poolclass=StaticPool,  # asegura que todos los sessions compartan la misma DB en memoria
 )
 
 TestingSessionLocal = sessionmaker(
@@ -24,15 +21,14 @@ TestingSessionLocal = sessionmaker(
     bind=engine
 )
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-def create_test_db():
-    """
-    Crea todas las tablas antes de los tests y limpia después.
-    """
+# Crear todas las tablas antes de la sesión de tests
+@pytest.fixture(scope="session", autouse=True)
+def setup_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
 
+# Override de get_db para usar la DB en memoria
 def override_get_db():
     db = TestingSessionLocal()
     try:
@@ -42,11 +38,9 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
+# Fixture de cliente HTTP
 @pytest_asyncio.fixture
 async def client():
-    """
-    Cliente HTTP para tests, usando ASGI transport (FastAPI app en memoria).
-    """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

@@ -7,19 +7,53 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.database import Base, engine
 from app.models import Usuario
-import asyncio
 
 
+def auth_headers(token):
+    return {"Authorization": f"Bearer {token}"}
 
-# Fixture para el cliente HTTP
-@pytest_asyncio.fixture
-async def client():
-    
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+async def crear_admin(client, username:str):
+        user_data = {
+        "nombre": "UsuarioTest",
+        "username": username,
+        "edad": 30,
+        "password": "test123",
+        "mail": username + "@test.com",
+        "es_admin": True
+    }
+        return await client.post("/usuarios", json=user_data)
+
+async def crear_usuario(client, username : str):
+        user_data = {
+        "nombre": "UserTest",
+        "username": username,
+        "mail": username + "@test.com",
+        "edad": 25,
+        "password": "test123",
+        "es_admin": False
+    }
+        return await client.post("/usuarios", json=user_data)
+
+async def user_token(client, username :str):
+    await crear_usuario(client, username)
+
+    login = await client.post("/login", data={
+        "username": username,
+        "password": "test123"
+    })
+    us_token = login.json()["access_token"]
+    return us_token
+
+async def admin_token(client, username :str):
+    await crear_admin(client, username)
+
+    login = await client.post("/login", data={
+        "username": username,
+        "password": "test123"
+    })
+    ad_token = login.json()["access_token"]
+    return ad_token
 
 
 
@@ -35,32 +69,27 @@ async def test_root(client):
 #Test 2: Crear un usuario
 @pytest.mark.asyncio
 async def test_crear_usuario(client):
-    user_data = {
-        "nombre": "UsuarioTest",
-        "username": "UsuarioTest",
-        "edad": 30,
-        "password": "test123",
-        "mail": "test@test.compile",
-        "es_admin": True
-    }
 
-    response = await client.post("/usuarios", json=user_data)
+    response = await crear_admin(client, "Admin1")
+    response2 = await crear_usuario(client, "Usuario1")
     assert response.status_code == 200, f"Error: {response.text}"
+    assert response2.status_code == 200, f"Error: {response.text}"
 
     data= response.json()
-    assert "id" in data
-    assert data["nombre"] == "UsuarioTest"
-    assert "password" not in data
+    data2= response2.json()
+    assert "id" in data, "id" in data2
+    assert data["nombre"] == "UsuarioTest", data2["nombre"] == "NoAdmin"
+    assert "password" not in data, "password" not in data2
 
 #Test 3: Login con el usuario creado
 @pytest.mark.asyncio
 async def test_login(client):
-    login_data = {
-        "username": "UsuarioTest",
-        "password": "test123"
-    }
+    await crear_admin(client, "Login")
 
-    response = await client.post("/login", data=login_data)
+    response = await client.post("/login", data= {
+        "username": "Login", 
+        "password": "test123"
+        })
     assert response.status_code == 200, f"Login falló: {response.text}"
 
     data = response.json()
@@ -74,13 +103,10 @@ async def test_login(client):
 @pytest.mark.asyncio
 async def test_endpoint_protegido(client):
     # 1.Login para obtener token
-    login_data = {"username": "UsuarioTest", "password":"test123"}
-    login_response = await client.post("/login", data=login_data)
-    token = login_response.json()["access_token"]
+    token = await admin_token(client, "Endpoint")
 
     # 2. Llamar al endpoint protegido con token
-    headers = {"Authorization": f"Bearer {token}"}
-    response = await client.get("/usuarios/me", headers=headers)
+    response = await client.get("/usuarios/me", headers=auth_headers(token))
 
     assert response.status_code == 200, f"Error protegido: {response.text}"
 
@@ -98,28 +124,13 @@ async def test_endpoint_sin_token(client):
 # Test 6: Listar usuarios (solo si no requiere auth)
 @pytest.mark.asyncio
 async def test_listar_usuarios(client):
-    # Crear usuario
-    await client.post("/usuarios", json={
-        "nombre": "UsuarioTest",
-        "username": "UsuarioTest",
-        "edad": 30,
-        "password": "test123",
-        "mail": "test@test.compile",
-        "es_admin": True
-    })
-
     # Login
-    login_response = await client.post("/login", data={
-        "username": "UsuarioTest",
-        "password": "test123"
-    })
-
-    token = login_response.json()["access_token"]
+    token = await admin_token(client, "Listar")
 
     # Llamar endpoint protegido
     response = await client.get(
         "/usuarios",
-        headers={"Authorization": f"Bearer {token}"}
+        headers=auth_headers(token)
     )
 
     assert response.status_code == 200
@@ -149,10 +160,149 @@ async def test_validacion_password_corta(client):
         "mail": "passcorta@test.com",
         "edad": 25,
         "password": "123",
-        "es_admim": False
+        "es_admin": False
     }
 
     response = await client.post("/usuarios", json=user_data)
     # Debería dar 422 (validación fallida) o 400
     assert response.status_code in [400, 422], f"Error inesperdo: {response.status_code}"
+
+#Test 9: Usuario no admin puede eliminar
+@pytest.mark.asyncio
+async def test_user_eliminarse(client):
+
+    token = await user_token(client, "Eliminarse")
+
+    response = await client.delete("/usuarios/me", headers=auth_headers(token))
+    assert response.status_code == 200
+
+#Test 10: Usuario no admin no puede eliminar
+@pytest.mark.asyncio
+async def test_user_no_elimina(client):
+    token = await user_token(client, "No_admin")
     
+    me = await client.get("/usuarios/me", headers=auth_headers(token))
+    user_id = me.json()["id"]
+
+    headers = {"Authorization": f"Bearer {token}"}   
+
+    response = await client.delete(f"/usuarios/{user_id}", headers=headers)
+    assert response.status_code == 403
+
+#Test 11: Usuario no lista todos los usuarios
+@pytest.mark.asyncio
+async def test_user_no_lista_usuarios(client):
+    # Login
+    token = await user_token(client, "No_Listar")
+
+    # Llamar endpoint protegido
+    response = await client.get(
+        "/usuarios",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 403
+
+#Test 12: Usuario no edita
+@pytest.mark.asyncio
+async def test_user_no_edita(client):
+    
+    token = await user_token(client, "No_edita")
+    me = await client.get("/usuarios/me", headers=auth_headers(token))
+    user_id = me.json()["id"]
+
+    response = await client.put(
+        f"/usuarios/{user_id}", 
+        headers= auth_headers(token),
+        json= {"nombre": "Edita",
+                "edad": 10,
+                "es_admin": True} 
+        )
+    
+    assert response.status_code == 403
+
+#Test 13: Usuario lee usuario
+@pytest.mark.asyncio
+async def test_user_lee_datos(client):
+    token = await user_token(client,"Leo_datos")
+
+    response = await client.get("/usuarios/me", headers=auth_headers(token))
+    assert response.status_code == 200
+
+#Test 14: Usuario busca usuario
+@pytest.mark.asyncio
+async def test_user_busca_user(client):
+    token = await user_token(client,"Busco")
+    token2 = await user_token(client,"Encontrado")
+
+    user2 = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_id = user2.json()["id"]
+
+    headers = {"Authorization": f"Bearer {token}"}   
+
+    response = await client.get(f"/usuarios/{user_id}", headers=headers)
+    assert response.status_code == 200
+
+#Test 15: Admin puede eliminarse
+@pytest.mark.asyncio
+async def test_admin_eliminarse(client):
+
+    token = await admin_token(client, "Eliminarse")
+
+    response = await client.delete("/usuarios/me", headers=auth_headers(token))
+    assert response.status_code == 200
+
+#Test 16: Admin puede eliminar
+@pytest.mark.asyncio
+async def test_admin_elimina(client):
+    token = await admin_token(client, "Admin")
+    token2= await user_token(client,"No_admin")
+    
+    me = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_id = me.json()["id"]
+
+    headers = {"Authorization": f"Bearer {token}"}   
+
+    response = await client.delete(f"/usuarios/{user_id}", headers=headers)
+    assert response.status_code == 200
+
+#Test 17: Admin edita
+@pytest.mark.asyncio
+async def test_admin_edita(client):
+
+    token = await admin_token(client, "Edita")
+    token2 = await user_token(client, "No_edita")
+    me = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_id = me.json()["id"]
+
+    response = await client.put(
+        f"/usuarios/{user_id}", 
+        headers= auth_headers(token),
+        json= {"nombre": "Editado",
+                "edad": 10,
+                "es_admin": True} 
+        )
+    
+    assert response.status_code == 200
+
+#Test 18: Admin lee usuario
+@pytest.mark.asyncio
+async def test_admin_lee_datos(client):
+    token = await admin_token(client,"Leo_datos")
+
+    response = await client.get("/usuarios/me", headers=auth_headers(token))
+    assert response.status_code == 200
+
+#Test 19: Admin busca usuario
+@pytest.mark.asyncio
+async def test_admin_busca_user(client):
+    token = await admin_token(client,"Busco")
+    token2 = await user_token(client,"Encontrado")
+
+    user2 = await client.get("/usuarios/me", headers=auth_headers(token2))
+    user_id = user2.json()["id"]
+
+    headers = {"Authorization": f"Bearer {token}"}   
+
+    response = await client.get(f"/usuarios/{user_id}", headers=headers)
+    assert response.status_code == 200
